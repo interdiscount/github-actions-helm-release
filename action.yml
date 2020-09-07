@@ -1,0 +1,42 @@
+name: 'Update and release helm chart'
+description: 'Updates the helm charts version and publishes it to the chartmuseum'
+inputs:
+  short-sha:
+    description: 'The short SHA value of the git commit'
+    required: true
+  service-name:
+    description: 'The name of the service'
+    required: true
+  docker-repository:
+    description: 'The prefix of your docker repository'
+    required: true
+  chartmuseum-url:
+    description: 'The url of your chart museum'
+    required: true
+  chartmuseum-username:
+    description: 'The username for your chartmuseum'
+    required: true
+  chartmuseum-password:
+    description: 'The password for your chartmuseum'
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: Set up git config and update versions in helm chart files
+      run: |
+        git config user.name "$GITHUB_ACTOR"
+        git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+        sed -i -e "s/version:.*/version: 1.0.0-sha${{ inputs.short-sha }}/" charts/${{ inputs.service-name }}/Chart.yaml
+        sed -i -e "s|repository: .*|repository: ${{ inputs.docker-repository }}/${{ inputs.service-name }}|" charts/${{ inputs.service-name }}/values.yaml
+        sed -i -e "s/tag: .*/tag: sha-${{ inputs.short-sha }}/" charts/${{ inputs.service-name }}/values.yaml
+      shell: bash
+
+    - name: Release the helm chart to chartmuseum
+      working-directory: charts/${{ inputs.service-name }}
+      run: |
+        helm plugin install https://github.com/chartmuseum/helm-push.git
+        helm repo add chartmuseum ${{ inputs.chartmuseum-url }} --username=${{ inputs.chartmuseum-username }} --password=${{ inputs.chartmuseum-password }}
+        helm package .
+        helm push . chartmuseum
+      shell: bash
